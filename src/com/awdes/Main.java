@@ -59,7 +59,7 @@ public class Main {
         }
     }
     private static void training() throws IOException {
-        boolean isWrite = false;
+        boolean isWrite = true;
         LOGGER.publish(new LogRecord(Level.INFO,"Заполняем данные..."));
         NeuralNetwork nn = new NeuralNetwork(0.01, 784, 70, 70, 10);
 
