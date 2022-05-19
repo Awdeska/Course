@@ -2,10 +2,10 @@ package com.awdes;
 
 public class Layer {
 
-    public int size; // Размер слоя
-    public double[] neurons; // Нейроны
-    public double[] biases; // Сдвиг активности (Определяет насколько должна быть большой взвешенная сумма, чтобы нейрон стал активным)
-    public double[][] weights; // Веса
+    public int size;
+    public double[] neurons;
+    public double[] biases;
+    public double[][] weights;
 
     public int getSize() {
         return size;

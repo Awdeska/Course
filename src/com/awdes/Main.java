@@ -5,29 +5,63 @@ import java.awt.image.BufferedImage;
 import java.beans.XMLDecoder;
 import java.beans.XMLEncoder;
 import java.io.*;
-import java.util.function.UnaryOperator;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Scanner;
+import java.util.logging.*;
 
 public class Main {
 
-    public static void main(String[] args) throws IOException {
-        digits();
-        //test();
-    }
-    private static void test() throws IOException, NullPointerException { // Десериализация
-        FileInputStream fileIS = new FileInputStream("Neuron.xml");
-        XMLDecoder decoder = new XMLDecoder(fileIS);
-        NeuralNetwork nn;
-        nn = (NeuralNetwork) decoder.readObject();
-        decoder.close();
-        fileIS.close();
+    static ConsoleFileHandler LOGGER = new ConsoleFileHandler();
+    private final static String PATH = "NeuronXML.xml";
 
-        TestNeuralNetwork(nn);
+
+    public static void main(String[] args) throws IOException {
+        menu();
     }
-    private static void digits() throws IOException {
-        System.out.println("Обучение началось!");
-        UnaryOperator<Double> sigmoid = x -> 1 / (1 + Math.exp(-x));
-        UnaryOperator<Double> dsigmoid = y -> y * (1 - y);
-        NeuralNetwork nn = new NeuralNetwork(0.001, sigmoid, dsigmoid, 784, 180, 120, 120, 10);
+    private static void menu() throws IOException {
+        LOGGER.publish(new LogRecord(Level.INFO,"Программа начала свою работу"));
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("Выберите вариант:\n" +
+                            "1. Обычное обучение;\n" +
+                            "2. Десириализация;");
+        int choice = scanner.nextInt();
+        switch (choice){
+            case 1:
+                LOGGER.publish(new LogRecord(Level.INFO, "Было выбрано обычное обучение"));
+                training();
+                break;
+            case 2:
+                LOGGER.publish(new LogRecord(Level.INFO, "Была выбрана десериализация"));
+                deserialization();
+                break;
+            default:
+                System.out.println("Выберите 1 или 2");
+                menu();
+                break;
+        }
+    }
+
+    private static void deserialization() throws IOException, NullPointerException { // Десериализация
+        if (Files.exists(Paths.get(PATH))) {
+            FileInputStream fileIS = new FileInputStream(PATH);
+            XMLDecoder decoder = new XMLDecoder(fileIS);
+            NeuralNetwork nn;
+            nn = (NeuralNetwork) decoder.readObject();
+            decoder.close();
+            fileIS.close();
+            FormDigits f = new FormDigits(nn);
+            new Thread(f).start();
+        }
+        else {
+            LOGGER.publish(new LogRecord(Level.WARNING,"Десериализация не удалась. Необходимого файла не существует."));
+            menu();
+        }
+    }
+    private static void training() throws IOException {
+        boolean isWrite = false;
+        LOGGER.publish(new LogRecord(Level.INFO,"Заполняем данные..."));
+        NeuralNetwork nn = new NeuralNetwork(0.01, 784, 70, 70, 10);
 
         int samples = 60000; // Количество изображений в дата сете
         BufferedImage[] images = new BufferedImage[samples];
@@ -39,18 +73,28 @@ public class Main {
             digits[i] = Integer.parseInt(imagesFiles[i].getName().charAt(10) + "");
         } // Добавление изображения числа в images (все изображения 28 на 28 пикселей)
           // Добавление числового значения изображения в digits(значение берётся с названия изображения)
+        double[][] inputs = getInputs(samples, images);
 
-        double[][] inputs = new double[samples][784];
-        for (int i = 0; i < samples; i++) {
-            for (int x = 0; x < 28; x++) {
-                for (int y = 0; y < 28; y++) {
-                    inputs[i][x + y * 28] = (images[i].getRGB(x, y) & 0xff) / 255.0;
-                }
-            }
-        } // Смотрим значения градаций серого в диапозоне от 0 для чёрных пикселей
-          // и 1 для белых (активация нейрона) Это будет первый слой для нейросети
+        trainNeuralNetwork(nn, samples, digits, inputs);
+        TestNeuralNetwork(nn); // Тест обученной сети
+        // Сериализация
+        serialization(isWrite, nn);
+    }
 
-        int epochs = 1400; // Количество эпох
+    private static void serialization(boolean isWrite, NeuralNetwork nn) throws FileNotFoundException {
+        if (!Files.exists(Paths.get(PATH)) || isWrite){
+            LOGGER.publish(new LogRecord(Level.INFO,"Началась сериализация"));
+            FileOutputStream fileOS = new FileOutputStream(PATH);
+            XMLEncoder encoder = new XMLEncoder(fileOS);
+            encoder.writeObject(nn);
+            encoder.close();
+            LOGGER.publish(new LogRecord(Level.INFO,"Сериализация закончилась"));
+        }
+    }
+
+    private static void trainNeuralNetwork(NeuralNetwork nn, int samples, int[] digits, double[][] inputs) {
+        LOGGER.publish(new LogRecord(Level.INFO,"Обучение началось!"));
+        int epochs = 7000; // Количество эпох
         for (int i = 1; i < epochs; i++) { // Обучение нейросети
             int right = 0; // Количество верных предсказаний
             double errorSum = 0; // Функция ошибки
@@ -75,30 +119,35 @@ public class Main {
                     errorSum += (targets[k] - outputs[k]) * (targets[k] - outputs[k]); // ВЫсчитываем ошибку
                 }
                 nn.backpropagation(targets);
+
             }
-            if(i % 100 == 0)
-                System.out.println("epoch: " + i + ". correct: " + right + ". error: " + errorSum);
+            if(i % 1000 == 0){
+                LOGGER.publish(new LogRecord(Level.INFO,"epoch: " + i + ". correct: " + right + ". error: " + errorSum));
+            }
         }
-        System.out.println("Обучение закончено!");
+        LOGGER.publish(new LogRecord(Level.INFO,"Обучение закончено!"));
+    }
 
-        // Сериализация
-        FileOutputStream fileOS = new FileOutputStream("NeuronXML.xml");
-        XMLEncoder encoder = new XMLEncoder(fileOS);
-        encoder.writeObject(nn);
-        encoder.close();
-
-
-        TestNeuralNetwork(nn); // Тест обученной сети
+    private static double[][] getInputs(int samples, BufferedImage[] images) {
+        double[][] inputs = new double[samples][784];
+        for (int i = 0; i < samples; i++) {
+            for (int x = 0; x < 28; x++) {
+                for (int y = 0; y < 28; y++) {
+                    inputs[i][x + y * 28] = (images[i].getRGB(x, y) & 0xff) / 255.0;
+                }
+            }
+        } // Смотрим значения градаций серого в диапозоне от 0 для чёрных пикселей
+        // и 1 для белых (активация нейрона) Это будет первый слой для нейросети
+        return inputs;
     }
 
     private static void TestNeuralNetwork(NeuralNetwork nn) throws IOException {
-        System.out.println("Начался тест с данными");
-        int samples;
+        LOGGER.publish(new LogRecord(Level.INFO,"Начался тест с данными"));
+        int samples = 10000;
         double[][] inputs;
         File[] imagesFiles;
         int[] digits;
         BufferedImage[] images;
-        samples = 10000;
         images = new BufferedImage[samples];
         digits = new int[samples];
         imagesFiles = new File("C:\\Users\\Sasha\\trainTest\\test").listFiles(); // Тренировочные данные
@@ -108,14 +157,7 @@ public class Main {
             digits[i] = Integer.parseInt(imagesFiles[i].getName().charAt(10) + "");
         }
 
-        inputs = new double[samples][784];
-        for (int i = 0; i < samples; i++) {
-            for (int x = 0; x < 28; x++) {
-                for (int y = 0; y < 28; y++) {
-                    inputs[i][x + y * 28] = (images[i].getRGB(x, y) & 0xff) / 255.0;
-                }
-            }
-        }
+        inputs = getInputs(samples, images);
         int sumRight = 0;
 
         for (int i = 0; i < samples; i++) {
@@ -131,7 +173,6 @@ public class Main {
             }
             if(digit == maxDigit) sumRight++;
         }
-        System.out.println("correct: " + sumRight + ". Тест окончен");
-
+        LOGGER.publish(new LogRecord(Level.INFO,"correct: " + sumRight + ". uncorrected: " + (samples - sumRight) + ". Тест окончен"));
     }
 }

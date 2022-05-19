@@ -6,8 +6,6 @@ public class NeuralNetwork {
 
     private double learningRate;
     private Layer[] layers;
-    private UnaryOperator<Double> activation;  //Функция активации
-    private UnaryOperator<Double> derivative;
 
     public double getLearningRate() {
         return learningRate;
@@ -25,29 +23,11 @@ public class NeuralNetwork {
         this.layers = layers;
     }
 
-    public UnaryOperator<Double> getActivation() {
-        return activation;
-    }
-
-    public void setActivation(UnaryOperator<Double> activation) {
-        this.activation = activation;
-    }
-
-    public UnaryOperator<Double> getDerivative() {
-        return derivative;
-    }
-
-    public void setDerivative(UnaryOperator<Double> derivative) {
-        this.derivative = derivative;
-    }
-
     public NeuralNetwork(){};
 
-    public NeuralNetwork(double learningRate, UnaryOperator<Double> activation, UnaryOperator<Double> derivative, int... sizes) {
+    public NeuralNetwork(double learningRate, int... sizes) {
         // Заполнение слоёв
         this.learningRate = learningRate;
-        this.activation = activation;
-        this.derivative = derivative;
         layers = new Layer[sizes.length];
         for (int i = 0; i < sizes.length; i++) {
             int nextSize = 0;
@@ -64,6 +44,7 @@ public class NeuralNetwork {
 
     public double[] feedForward(double[] inputs) {
         System.arraycopy(inputs, 0, layers[0].neurons, 0, inputs.length);
+        UnaryOperator<Double> activation = x -> 1 / (1 + Math.exp(-x)); // sigmoid
         for (int i = 1; i < layers.length; i++)  {
             Layer l = layers[i - 1];
             Layer l1 = layers[i];
@@ -79,8 +60,9 @@ public class NeuralNetwork {
         return layers[layers.length - 1].neurons;
     }
 
-    public void backpropagation(double[] targets) { // Метод обратного распределения
+    public void backpropagation(double[] targets) {
         double[] errors = new double[layers[layers.length - 1].size];
+        UnaryOperator<Double> derivative = y -> y * (1 - y);
         for (int i = 0; i < layers[layers.length - 1].size; i++) {
             errors[i] = targets[i] - layers[layers.length - 1].neurons[i];
         }
